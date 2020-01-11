@@ -106,7 +106,70 @@ class Encoder:
         text = bytearray([self.byte_decoder[c] for c in text]).decode('utf-8', errors=self.errors)
         return text
 
+try:
+  from tokenizers import Tokenizer, models, pre_tokenizers, decoders
+  use_high_speed_tokenizer = True
+  print('Supports high-speed tokenizer')
+except:
+  use_high_speed_tokenizer = False
+
+class HighSpeedTokenizer(object):
+  def __init__(self, vocab_path, bpe_merges_path):
+    tokenizer = Tokenizer(models.BPE.from_files(vocab_path, bpe_merges_path))
+    # Use the byte level
+    add_prefix_spaces = False # Whether to automatically prefix the sequences with a space if none found
+    tokenizer.with_pre_tokenizer(pre_tokenizers.ByteLevel.new(add_prefix_spaces))
+    tokenizer.with_decoder(decoders.ByteLevel.new())
+    # Setup truncation if needed
+    truncate = False
+    max_length = 1024
+    if truncate:
+      stride = 0
+      strategy = 'longest_first' # Can also be `only_first` or `only_second`
+      tokenizer.with_truncation(max_length, stride, strategy)
+    # Setup padding if needed
+    padding = False
+    # Whether to always pad to max_length. If this is false, we will pad to the
+    # longest sequence in the batch.
+    pad_to_max_length = False
+    padding_side = "right" # Can also be "left"
+    pad_token_id = 0
+    pad_token_type_id = 0
+    pad_token = "[PAD]"
+    if padding:
+      tokenizer.with_padding(
+        max_length if pad_to_max_length else None,
+        padding_side,
+        pad_token_id,
+        pad_token_type_id,
+        pad_token
+      )
+    self.tokenizer = tokenizer
+
+  def encode(self, text):
+    tokens = []
+    lines = text.splitlines()
+    c = '\n'
+    n = len(lines) - 1
+    for i, line in enumerate(lines):
+      if i >= n:
+        c = ''
+      encoding = self.tokenizer.encode(line + c)
+      tokens.extend(encoding.ids)
+    if text.endswith('\n'):
+      tokens.extend(self.tokenizer.encode('\n').ids)
+    return tokens
+
+  def decode(self, tokens):
+    text = self.tokenizer.decode(tokens, False)
+    return text
+
 def get_encoder(encoder_path):
+    vocab_path = os.path.join(encoder_path, 'encoder.json')
+    bpe_merges_path = os.path.join(encoder_path, 'vocab.bpe')
+    if use_high_speed_tokenizer and os.path.isfile(vocab_path) and os.path.isfile(bpe_merges_path):
+      print('Using high-speed tokenizer')
+      return HighSpeedTokenizer(vocab_path=vocab_path, bpe_merges_path=bpe_merges_path)
     with tf.gfile.Open(os.path.join(encoder_path, 'encoder.json'), 'r') as f:
         encoder = json.load(f)
     with tf.gfile.Open(os.path.join(encoder_path, 'vocab.bpe'), 'r') as f: # utf-8?
