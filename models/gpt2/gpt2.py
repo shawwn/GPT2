@@ -192,8 +192,12 @@ def model(X, params, labels=None, past=None, scope='model', reuse=False, train=F
         presents = []
         pasts = tf.unstack(past, axis=1) if past is not None else [None] * params["n_layer"]
         assert len(pasts) == params["n_layer"]
+        checkpoint=True
+        every = 1
         for layer, past in enumerate(pasts):
             h, present = block(h, 'h%d' % layer, past=past, params=params, train=train)
+            if checkpoint and layer % every == 0:
+                tf.add_to_collection('checkpoints', h)
             presents.append(present)
         results['present'] = tf.stack(presents, axis=1)
         h = norm(h, 'ln_f', params=params)

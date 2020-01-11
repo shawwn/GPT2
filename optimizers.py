@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-
+import memory_saving_gradients
 
 def create_train_op(loss, params):
     lr = params["lr"]
@@ -56,7 +56,39 @@ def create_train_op(loss, params):
         optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS) # To update batchnorm, if present
-    train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    global_vars = [v for v in tf.global_variables()]
+    all_vars = [v for v in tf.trainable_variables()]
+    only_train_transformer_layers = False
+    def should_train_variable(v):
+      if only_train_transformer_layers:
+        if '/h' not in v.name and '/ln_f' not in v.name:
+          return False
+        #for i in range(1):
+        #  if ('/h%01d/' % i) in v.name:
+        #    return False
+        #  if ('/h%02d/' % i) in v.name:
+        #    return False
+      print(v)
+      return True
+    train_vars = [v for v in all_vars if should_train_variable(v)]
+
+    parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
+    print("Using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
+    use_memory_saving_gradients=True
+    colocate_gradients_with_ops=True
+    gate_gradients=None
+    if use_memory_saving_gradients:
+      #grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
+      #grads = memory_saving_gradients.gradients_memory if i == 0 else memory_saving_gradients.gradients_speed
+      #grads = memory_saving_gradients.gradients_speed if i == 0 else memory_saving_gradients.gradients_speed
+      grads = memory_saving_gradients.gradients
+      grads = grads(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, gate_gradients=gate_gradients)
+    else:
+      grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, gate_gradients=gate_gradients)
+    grads = list(zip(grads, train_vars))
+    grads = [(g, v) if g is not None else (tf.zeros_like(v), v) for g, v in grads]  # replace disconnected gradients with zeros
+    #train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    train_op = optimizer.apply_gradients(grads)
     train_op = tf.group([train_op, update_ops])
 
     return train_op
