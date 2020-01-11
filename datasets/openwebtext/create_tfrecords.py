@@ -81,7 +81,7 @@ def create_file(args):
 start = time.time()
 good = 0
 if processes <= 1:
-    for f in tqdm(file_chunks):
+    for f in tqdm(enumerate(file_chunks), total=len(file_chunks)):
         good += create_file(f)
 else:
     pool = Pool(processes=processes)
