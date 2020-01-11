@@ -32,6 +32,7 @@ if __name__ == "__main__":
     parser.add_argument("--predict_file", type=str) # File to take as input for predict
     parser.add_argument("--predict_text", type=str) # Take string directly from args
     parser.add_argument("--top_k", type=int) # Top K truncation parameter for text generation
+    parser.add_argument("--no_eval", action='store_true')
     args = parser.parse_args()
 
     # Get prediction text
@@ -151,11 +152,12 @@ if __name__ == "__main__":
         end = time.time()
         logger.info("\nTrain loop took {:.2f}s\n".format(end-start))
 
-        eval_result = network.evaluate(
-           input_fn=partial(input_fn, eval=True),
-           steps=params["eval_steps"])
+        if not args.no_eval:
+            eval_result = network.evaluate(
+               input_fn=partial(input_fn, eval=True),
+               steps=params["eval_steps"])
 
-        logger.info("\nEval Results: {}\n".format(str(eval_result)))
+            logger.info("\nEval Results: {}\n".format(str(eval_result)))
 
         if network.get_variable_value("global_step") > params["max_steps"]:
             logger.info("Done!")
