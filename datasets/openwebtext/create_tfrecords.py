@@ -79,11 +79,14 @@ def create_file(args):
     return good_files
 
 start = time.time()
-pool = Pool(processes=processes)
 good = 0
-for g in tqdm(pool.imap(create_file, enumerate(file_chunks)), total=len(file_chunks)):
-    good += g
-
+if processes <= 1:
+    for f in tqdm(file_chunks):
+        good += create_file(f)
+else:
+    pool = Pool(processes=processes)
+    for g in tqdm(pool.imap(create_file, enumerate(file_chunks)), total=len(file_chunks)):
+        good += g
 end = time.time()
 
 print("Done! In {:.2f}s, {} / {} good files.".format(end-start, str(good), str(len(files))))
